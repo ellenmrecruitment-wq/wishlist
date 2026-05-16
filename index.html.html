@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -106,6 +107,33 @@
 <div class="toast" id="toast">✓ Подарок забронирован!</div>
 
 <script>
+// ── CONFIG ──────────────────────────────────────────────────────────────────
+const SHEET_ID   = '1YI6gAbF9gcuq7bPudwAKb_BpCpQ_nriHU2bP3ARA4x4';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbybloo_9GLFWu7uJ4Ag-4J8Meti6nk11pkQDNtOon2ntQj1Be27TbGYfXY-AouwF6W5cw/exec';
+// ────────────────────────────────────────────────────────────────────────────
+
+async function loadItems() {
+  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=wishlist&_=${Date.now()}`;
+  const res  = await fetch(url);
+  const text = await res.text();
+  const json = JSON.parse(text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/)[1]);
+  const cols = json.table.cols.map(c => c.label);
+  return json.table.rows.map((r, idx) => {
+    const obj = {};
+    cols.forEach((c, i) => { obj[c] = r.c[i] ? r.c[i].v : ''; });
+    return {
+      id:     String(obj.id || idx + 1),
+      name:   obj.name   || '',
+      sub:    obj.sub    || '',
+      price:  obj.price  || '',
+      link:   obj.link   || '',
+      img:    obj.img    || '',
+      booked: obj.booked === true || obj.booked === 'TRUE' || obj.booked === 1,
+      emoji:  '🎁'
+    };
+  });
+}
+
 const items = [
   {
     id: 1,
@@ -166,7 +194,7 @@ const items = [
     id: 9,
     name: "Халат Bown of London",
     sub: "Earl/Duchess Claret с вышивкой",
-    specs: ["Цвет: бордовый (Claret)", "Бренд: Bown of London", "Цена: £319.95"],
+    specs: ["Цвет: бордовый (Claret)", "Размер: L", "Бренд: Bown of London", "Цена: £319.95"],
     img: "https://www.bownoflondon.com/cdn/shop/files/Untitled_design_17.png?v=1731676392",
     link: "https://www.bownoflondon.com/collections/mens-dressing-gowns/products/earl-duchess-claret-dressing-gown-bundle",
     emoji: "🩱"
@@ -238,7 +266,7 @@ const items = [
     id: 10,
     name: "Шёлковая пижама",
     sub: "Уточни бренд у организатора",
-    specs: ["Материал: шёлк", "Модель: уточнить у организатора"],
+    specs: ["Материал: шёлк"],
     img: null,
     link: null,
     emoji: "🌙"
@@ -246,51 +274,72 @@ const items = [
   {
     id: 12,
     name: "Ювелирный браслет",
-    sub: "Бренд необязательно именно этот",
-    specs: ["Стиль: мужской браслет-цепь с двумя рядами кристаллов", "Материал: нержавеющая сталь", "Примечание: необязательно именно этот — похожий стиль"],
+    sub: "необязательно именно этот — похожий стиль",
+    specs: [],
     img: "https://harrychadent.ca/cdn/shop/files/3CaratsMenRealDiamondBraceletBeautifulWhiteGoldJewelry.jpg?v=1702042008",
     emoji: "💎"
   }
 ];
 
-const booked = new Set(
-  JSON.parse(localStorage.getItem('booked') || '[]')
-);
-
+const booked = new Set();
 let pendingId = null;
 
-function saveBooked() {
-  localStorage.setItem('booked', JSON.stringify([...booked]));
+// ── CONFIG ──────────────────────────────────────────────────────────────────
+const SHEET_ID   = '1YI6gAbF9gcuq7bPudwAKb_BpCpQ_nriHU2bP3ARA4x4';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbybloo_9GLFWu7uJ4Ag-4J8Meti6nk11pkQDNtOon2ntQj1Be27TbGYfXY-AouwF6W5cw/exec';
+// ────────────────────────────────────────────────────────────────────────────
+
+async function loadFromSheets() {
+  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=wishlist&_=${Date.now()}`;
+  const res  = await fetch(url);
+  const text = await res.text();
+  const json = JSON.parse(text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/)[1]);
+  const cols = json.table.cols.map(c => c.label);
+  return json.table.rows.map((r, idx) => {
+    const obj = {};
+    cols.forEach((c, i) => { obj[c] = r.c[i] ? r.c[i].v : ''; });
+    return {
+      id:     String(obj.id || idx + 1),
+      name:   obj.name  || '',
+      sub:    obj.sub   || '',
+      price:  obj.price || '',
+      link:   obj.link  || '',
+      img:    obj.img   || '',
+      booked: obj.booked === true || String(obj.booked).toUpperCase() === 'TRUE',
+      specs:  obj.specs ? obj.specs.split('|') : [],
+      emoji:  '🎁'
+    };
+  });
 }
 
 function updateStats() {
   const total = items.length;
-  const taken = booked.size;
+  const taken = items.filter(i => i.booked).length;
   document.getElementById('s-total').textContent = total;
-  document.getElementById('s-free').textContent = total - taken;
+  document.getElementById('s-free').textContent  = total - taken;
   document.getElementById('s-taken').textContent = taken;
 }
 
 function render() {
   document.getElementById('grid').innerHTML = items.map(item => {
-    const isBooked = booked.has(item.id);
+    const isBooked = item.booked;
     const imgHtml = item.img
       ? `<img class="card-img" src="${item.img}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="card-emoji" style="display:none">${item.emoji}</div>`
       : `<div class="card-emoji">${item.emoji}</div>`;
     const specsPreview = item.specs && item.specs.length
       ? `<div class="card-specs">📋 ${item.specs[0]}</div>` : '';
     return `
-      <div class="card ${isBooked ? 'booked' : ''}" onclick="openModal(${item.id})">
+      <div class="card ${isBooked ? 'booked' : ''}" onclick="openModal('${item.id}')">
         <div class="img-wrap">
           ${imgHtml}
           ${isBooked ? '<div class="booked-badge">Занято ✓</div>' : ''}
         </div>
         <div class="card-body">
           <div class="card-name">${item.name}</div>
-          <div class="card-sub">${item.sub}</div>
+          ${item.sub ? `<div class="card-sub">${item.sub}</div>` : ''}
           ${specsPreview}
           <div class="card-footer">
-            <button class="btn-book ${isBooked ? 'booked' : ''}" onclick="event.stopPropagation();openModal(${item.id})" ${isBooked ? 'disabled' : ''}>
+            <button class="btn-book ${isBooked ? 'booked' : ''}" onclick="event.stopPropagation();openModal('${item.id}')" ${isBooked ? 'disabled' : ''}>
               ${isBooked ? '✓ Забронировано' : 'Забронировать'}
             </button>
             ${item.link ? `<a class="btn-link" href="${item.link}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Посмотреть →</a>` : ''}
@@ -302,19 +351,16 @@ function render() {
 }
 
 function openModal(id) {
-  const item = items.find(i => i.id === id);
+  const item = items.find(i => i.id === String(id));
   if (!item) return;
-  const isBooked = booked.has(id);
   pendingId = id;
 
-  // image
   const mImg = document.getElementById('m-img');
   if (item.img) { mImg.src = item.img; mImg.style.display = 'block'; }
   else { mImg.style.display = 'none'; }
 
   document.getElementById('m-title').textContent = item.name;
 
-  // specs
   const specsBlock = document.getElementById('m-specs-block');
   const specsEl = document.getElementById('m-specs');
   if (item.specs && item.specs.length) {
@@ -324,13 +370,12 @@ function openModal(id) {
     specsBlock.style.display = 'none';
   }
 
-  // link
   const mLink = document.getElementById('m-link');
   if (item.link) { mLink.href = item.link; mLink.style.display = 'block'; }
   else { mLink.style.display = 'none'; }
 
   const btn = document.getElementById('m-confirm');
-  if (isBooked) {
+  if (item.booked) {
     btn.textContent = '✓ Уже забронировано';
     btn.disabled = true;
   } else {
@@ -341,16 +386,33 @@ function openModal(id) {
   document.getElementById('overlay').classList.add('open');
 }
 
-document.getElementById('m-confirm').onclick = () => {
-  if (!pendingId || booked.has(pendingId)) return;
-  booked.add(pendingId);
-  saveBooked();
-  pendingId = null;
-  document.getElementById('overlay').classList.remove('open');
-  render();
-  const t = document.getElementById('toast');
-  t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2800);
+document.getElementById('m-confirm').onclick = async () => {
+  if (!pendingId) return;
+  const item = items.find(i => i.id === String(pendingId));
+  if (!item || item.booked) return;
+
+  const btn = document.getElementById('m-confirm');
+  btn.disabled = true;
+  btn.textContent = 'Бронируем...';
+
+  try {
+    await fetch(SCRIPT_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: pendingId })
+    });
+    item.booked = true;
+    pendingId = null;
+    document.getElementById('overlay').classList.remove('open');
+    render();
+    const t = document.getElementById('toast');
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2800);
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = 'Забронировать';
+  }
 };
 
 document.getElementById('m-cancel').onclick = () => {
@@ -364,7 +426,30 @@ document.getElementById('overlay').onclick = e => {
   }
 };
 
-render();
+// init + auto-refresh
+async function init() {
+  try {
+    items = await loadFromSheets();
+    render();
+  } catch(e) {
+    console.error(e);
+    document.getElementById('grid').innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--muted)">Не удалось загрузить список.<br><button onclick="init()" style="margin-top:12px;padding:8px 20px;border-radius:20px;border:1px solid var(--accent);background:transparent;color:var(--accent);cursor:pointer">Попробовать снова</button></div>`;
+  }
+}
+
+setInterval(async () => {
+  try {
+    const fresh = await loadFromSheets();
+    fresh.forEach(f => {
+      const local = items.find(i => i.id === f.id);
+      if (local) local.booked = f.booked;
+    });
+    render();
+  } catch(e) {}
+}, 30000);
+
+init();
+
 </script>
 </body>
 </html>
